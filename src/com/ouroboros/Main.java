@@ -7,6 +7,9 @@ import java.nio.file.Paths;
 import java.util.*;
 import java.util.stream.IntStream;
 
+import static java.lang.Character.isWhitespace;
+import static java.lang.Character.toChars;
+
 public class Main {
 
     private static final int FILE_LINE_THRESHOLD = 2000;
@@ -19,31 +22,27 @@ public class Main {
     private static final class TextArray implements Comparable<TextArray> {
 
         private int[] array;
-        private String[] strArray;
 
         TextArray(int l) {
             this.array = new int[l];
-            this.strArray = new String[l];
             reset();
         }
 
         void reset() {
             for (int i = 0; i < array.length; i++) {
                 array[i] = -1;
-                strArray[i] = null;
             }
         }
 
         void set(int index, int value) {
             array[index] = value;
-            strArray[index] = Character.toString((char) value);
         }
 
         void write(final FileWriter outputStream) throws IOException {
-            if (strArray[0] != null) {
-                Arrays.stream(strArray).filter(Objects::nonNull).forEachOrdered(s -> {
+            if (array[0] != -1) {
+                Arrays.stream(array).filter(i -> i >= 0).forEachOrdered(i -> {
                     try {
-                        outputStream.write(s);
+                        outputStream.write(toChars(i));
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
@@ -54,14 +53,13 @@ public class Main {
         }
 
         boolean isEmpty() {
-            return strArray[0] == null;
+            return array[0] == -1;
         }
 
         boolean clone(TextArray textArray) {
             if (this.array.length == textArray.array.length) {
                 for (int i = 0; i < this.array.length; i++) {
                     this.array[i] = textArray.array[i];
-                    this.strArray[i] = textArray.strArray[i];
                 }
 
                 return true;
@@ -72,7 +70,7 @@ public class Main {
 
         @Override
         public int compareTo(TextArray o) {
-            return Arrays.compare(this.strArray, o.strArray);
+            return Arrays.compare(this.array, o.array);
         }
 
         @Override
@@ -89,83 +87,65 @@ public class Main {
         }
     }
 
-    private static final Comparator<int[]> INT_ARRAY_COMPARATOR = (o1, o2) -> {
-
-        if (o1.length == o2.length) {
-            for (int i = 0; i < o1.length; i++) {
-                if (o1[i] != o2[i]) {
-                    return o1[i] - o2[i];
-                }
-            }
-        } else if (o1.length > o2.length) {
-            for (int i = 0; i < o2.length; i++) {
-                if (o1[i] != o2[i]) {
-                    return o1[i] - o2[i];
-                }
-            }
-
-            return 1;
-        } else {
-            for (int i = 0; i < o1.length; i++) {
-                if (o1[i] != o2[i]) {
-                    return o1[i] - o2[i];
-                }
-            }
-
-            return -1;
-        }
-
-        return 0;
-    };
-
 
     public static void main(String[] args) {
-        if (args == null || args.length != 1) {
-            //TODO
+        if (args == null || args.length != 2) {
+            System.out.println("Invalid arguments for the program.");
+            return;
         }
 
-        String filePath = args[0];
-        Path path = Paths.get(filePath);
+        String inputFile = args[0];
+        Path inputFilePath = Paths.get(inputFile);
 
-        try {
-            if (Files.notExists(path) || !Files.isReadable(path) || !Files.isRegularFile(path) || Files.size(path) > 0L) {
-                //TODO
+        String outputFile = args[1];
+        Path outputFilePath = Paths.get(outputFile);
+
+        if (Files.notExists(inputFilePath) || !Files.isReadable(inputFilePath) || !Files.isRegularFile(inputFilePath)) {
+            System.out.println("Invalid input file.");
+            return;
+        }
+
+
+        if (Files.notExists(outputFilePath)) {
+            try {
+                Files.createFile(outputFilePath);
+            } catch (IOException e) {
+                System.out.println("Failed to create output file.");
+                e.printStackTrace();
+                return;
             }
-        } catch (IOException e) {
-            //TODO
         }
 
-//        try {
-//            Thread.sleep(10000);
-//        } catch (InterruptedException e) {
-//            e.printStackTrace();
-//        }
+        if (Files.notExists(outputFilePath) || !Files.isWritable(outputFilePath) || !Files.isRegularFile(outputFilePath)) {
+            System.out.println("Invalid output file.");
+            return;
+        }
+
 
         try {
             createTempFolder(TEMP_FOLDER);
             createTempFolder(TEMP_LONG_WORD_FOLDER);
             createTempFolder(TEMP_SORTED_WORD_FOLDER);
 
-            Path analyzeFile = analyzeFile(path);
+            Path analyzeFile = analyzeFile(inputFilePath);
             splitFileAndSortWord(analyzeFile);
             Path tempResultPath = mergeSortWord();
+            tempResultPath = mergeLongWord(tempResultPath);
 
-            System.out.println(tempResultPath.toFile().getAbsolutePath());
+            copyFile(tempResultPath, outputFilePath);
 
         } catch (IOException | RuntimeException e) {
+            System.out.println("Error occurred when running the program: ");
             e.printStackTrace();
-
-            //TODO
         } finally {
-//            try {
-//                deleteTempFolder();
-//                deleteTempFolder();
-//            } catch (IOException e) {
-//                //TODO
-//            }
+            try {
+                deleteTempFolder(TEMP_SORTED_WORD_FOLDER);
+                deleteTempFolder(TEMP_LONG_WORD_FOLDER);
+                deleteTempFolder(TEMP_FOLDER);
+            } catch (IOException e) {
+                System.out.println("Error occurred when deleting temp generated files.");
+            }
         }
-
-
     }
 
     private static Path analyzeFile(Path filePath) throws IOException {
@@ -180,12 +160,10 @@ public class Main {
                 StringBuilder stringBuilder = new StringBuilder(WORD_LENGTH_THRESHOLD + 2);
 
                 int i;
-                String s;
                 while ((i = inputStream.read()) != -1) {
-                    s = Character.toString((char) i);
                     wordLength++;
 
-                    if (isBlank(s)) {
+                    if (isWhitespace(i)) {
                         if (wordLength > 1) {
                             stringBuilder.append('\n');
                             outputStream.write(stringBuilder.toString());
@@ -202,20 +180,18 @@ public class Main {
                                 stringBuilder.setLength(0);
                                 wordLength = 0;
 
-                                longWordOutputStream.write(s);
+                                longWordOutputStream.write(toChars(i));
 
                                 while ((i = inputStream.read()) != -1) {
-                                    s = Character.toString((char) i);
-
-                                    if (!isBlank(s)) {
-                                        longWordOutputStream.write(s);
+                                    if (!isWhitespace(i)) {
+                                        longWordOutputStream.write(toChars(i));
                                     } else {
                                         break;
                                     }
                                 }
                             }
                         } else {
-                            stringBuilder.append(s);
+                            stringBuilder.append(toChars(i));
                         }
                     }
                 }
@@ -238,11 +214,8 @@ public class Main {
             int charCount = 0;
 
             int i;
-            String s;
             while ((i = inputStream.read()) != -1) {
-                s = Character.toString((char) i);
-
-                if (!isBlank(s)) {
+                if (!isWhitespace(i)) {
                     textArrays.get(wordCount).set(charCount, i);
                     charCount++;
                 } else {
@@ -280,9 +253,8 @@ public class Main {
 
     private static Path mergeSortWord() throws IOException {
         List<Path> tempSortResultPath = new ArrayList<>(2);
-        tempSortResultPath.add(createTempFile(TEMP_SORTED_WORD_FOLDER));
         boolean[] usedFirstPath = new boolean[1];
-        usedFirstPath[0] = false;
+
 
         TextArray currentText1 = new TextArray(WORD_LENGTH_THRESHOLD);
         TextArray currentText2 = new TextArray(WORD_LENGTH_THRESHOLD);
@@ -290,8 +262,16 @@ public class Main {
 
         Files.walk(Paths.get(TEMP_SORTED_WORD_FOLDER)).filter(Files::isRegularFile).forEach(path -> {
             try {
-                if (tempSortResultPath.size() < 2) {
-                    tempSortResultPath.add(path);
+                if (tempSortResultPath.isEmpty()) {
+                    Path filePath1 = createTempFile(TEMP_FOLDER);
+                    Path filePath2 = createTempFile(TEMP_FOLDER);
+
+                    tempSortResultPath.add(filePath1);
+                    tempSortResultPath.add(filePath2);
+
+                    copyFile(path, filePath2);
+
+                    usedFirstPath[0] = false;
                 } else {
                     Path lastResultPath = tempSortResultPath.get(usedFirstPath[0] ? 0 : 1);
                     Path outputPath = tempSortResultPath.get(usedFirstPath[0] ? 1 : 0);
@@ -341,11 +321,8 @@ public class Main {
         int count = 0;
 
         int i;
-        String s;
         while ((i = inputStream.read()) != -1) {
-            s = Character.toString((char) i);
-
-            if (isBlank(s)) {
+            if (isWhitespace(i)) {
                 return;
             } else {
                 textArray.set(count, i);
@@ -361,6 +338,141 @@ public class Main {
         }
     }
 
+    private static Path mergeLongWord(Path tempResultFilePath) throws IOException {
+        List<Path> sortResultPath = new ArrayList<>(2);
+        sortResultPath.add(tempResultFilePath);
+        sortResultPath.add(createTempFile(TEMP_FOLDER));
+        boolean[] usedFirstPath = new boolean[1];
+        usedFirstPath[0] = true;
+
+        Files.walk(Paths.get(TEMP_LONG_WORD_FOLDER)).filter(Files::isRegularFile).forEach(path -> {
+
+            Path lastResultPath = sortResultPath.get(usedFirstPath[0] ? 0 : 1);
+            Path outputPath = sortResultPath.get(usedFirstPath[0] ? 1 : 0);
+
+            try (FileReader fileStream1 = new FileReader(lastResultPath.toFile().getAbsolutePath())) {
+
+                int lineCount = 0;
+                boolean finish = false;
+
+                int i1;
+                boolean b1;
+                int i2;
+                boolean b2;
+
+                while (true) {
+                    try (FileReader fileStream2 = new FileReader(path.toFile().getAbsolutePath())) {
+
+                        while (true) {
+                            i1 = fileStream1.read();
+                            i2 = fileStream2.read();
+
+                            b1 = isWhitespace(i1);
+                            b2 = isWhitespace(i2);
+
+                            if (i2 == -1 || b2) {
+                                if (i1 != -1 && !b1) {
+                                    finish = true;
+                                    break;
+                                } else {
+                                    return;
+                                }
+                            } else {
+                                if (i1 == -1) {
+                                    lineCount++;
+                                    finish = true;
+                                    break;
+                                } else if (b1) {
+                                    break;
+                                } else {
+                                    if (i1 == i2) {
+                                        continue;
+                                    } else if (i1 > i2) {
+                                        finish = true;
+                                        break;
+                                    } else  {
+                                        while ((i1 = fileStream1.read()) != -1 && !isWhitespace(i1)) {
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+
+                        }
+
+                    }
+
+                    if (finish) {
+                        appendWordLineToFile(path, lastResultPath, outputPath, lineCount);
+                        usedFirstPath[0] = !usedFirstPath[0];
+                        return;
+                    }
+
+                    lineCount++;
+                }
+
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        return sortResultPath.get(usedFirstPath[0] ? 0 : 1);
+    }
+
+
+    private static void copyFile(Path srcPath, Path destPath) throws IOException {
+        try (FileWriter outputStream = new FileWriter(destPath.toFile().getAbsolutePath(), false);
+             FileReader inputStream = new FileReader(srcPath.toFile().getAbsolutePath())) {
+            int i;
+            while ((i = inputStream.read()) != -1) {
+                outputStream.write(toChars(i));
+            }
+        }
+    }
+
+    private static void appendWordLineToFile(Path wordFilePath, Path srcFilePath, Path destFilePath, int lineNum) throws IOException {
+        try (FileReader inputStream = new FileReader(srcFilePath.toFile().getAbsolutePath());
+            FileWriter outputStream = new FileWriter(destFilePath.toFile().getAbsoluteFile(), false)) {
+
+            if (lineNum == 0) {
+                writeWordLineToFile(wordFilePath, outputStream);
+
+                int i;
+                while ((i = inputStream.read()) != -1) {
+                    outputStream.write(toChars(i));
+                }
+            } else {
+                int lineCount = 0;
+
+                int i;
+                while ((i = inputStream.read()) != -1) {
+                    outputStream.write(toChars(i));
+
+                    if (isWhitespace(i)) {
+                        lineCount++;
+
+                        if (lineCount == lineNum) {
+                            writeWordLineToFile(wordFilePath, outputStream);
+                        }
+                    }
+                }
+
+                if (lineCount < lineNum) {
+                    writeWordLineToFile(wordFilePath, outputStream);
+                }
+            }
+        }
+    }
+
+    private static void writeWordLineToFile(Path wordFilePath, FileWriter outputStream) throws IOException {
+        try (FileReader wordStream = new FileReader(wordFilePath.toFile().getAbsoluteFile())) {
+            int iw;
+            while ((iw = wordStream.read()) != -1 && !isWhitespace(iw)) {
+                outputStream.write(toChars(iw));
+            }
+            outputStream.write('\n');
+        }
+    }
 
     private static void createTempFolder(String folderName) throws IOException {
         Path tempFolderPath = Paths.get(folderName);
@@ -392,16 +504,5 @@ public class Main {
         }
     }
 
-    private static boolean isBlank(final CharSequence cs) {
-        int strLen;
-        if (cs == null || (strLen = cs.length()) == 0) {
-            return true;
-        }
-        for (int i = 0; i < strLen; i++) {
-            if (!Character.isWhitespace(cs.charAt(i))) {
-                return false;
-            }
-        }
-        return true;
-    }
+
 }
