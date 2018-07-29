@@ -9,8 +9,8 @@ import java.util.stream.IntStream;
 
 public class Main {
 
-    private static final int FILE_LINE_THRESHOLD = 100;
-    private static final int WORD_LENGTH_THRESHOLD = 20;
+    private static final int FILE_LINE_THRESHOLD = 2000;
+    private static final int WORD_LENGTH_THRESHOLD = 50;
 
     private static final String TEMP_FOLDER = "temp";
     private static final String TEMP_LONG_WORD_FOLDER = "temp/long";
@@ -51,6 +51,23 @@ public class Main {
 
                 outputStream.write("\n");
             }
+        }
+
+        boolean isEmpty() {
+            return strArray[0] == null;
+        }
+
+        boolean clone(TextArray textArray) {
+            if (this.array.length == textArray.array.length) {
+                for (int i = 0; i < this.array.length; i++) {
+                    this.array[i] = textArray.array[i];
+                    this.strArray[i] = textArray.strArray[i];
+                }
+
+                return true;
+            }
+
+            return false;
         }
 
         @Override
@@ -131,6 +148,9 @@ public class Main {
 
             Path analyzeFile = analyzeFile(path);
             splitFileAndSortWord(analyzeFile);
+            Path tempResultPath = mergeSortWord();
+
+            System.out.println(tempResultPath.toFile().getAbsolutePath());
 
         } catch (IOException | RuntimeException e) {
             e.printStackTrace();
@@ -230,7 +250,7 @@ public class Main {
 
                     if (wordCount == FILE_LINE_THRESHOLD) {
                         sortWordAndWriteFile(textArrays);
-                        textArrays.parallelStream().forEach(TextArray::reset);
+                        textArrays.forEach(TextArray::reset);
                         wordCount = 0;
                     }
 
@@ -248,7 +268,7 @@ public class Main {
         Path sortedFilePath = createTempFile(TEMP_SORTED_WORD_FOLDER);
 
         try (FileWriter outputStream = new FileWriter(sortedFilePath.toFile().getAbsolutePath())) {
-            textSet.stream().forEachOrdered(a -> {
+            textSet.forEach(a -> {
                 try {
                     a.write(outputStream);
                 } catch (IOException e) {
@@ -258,6 +278,88 @@ public class Main {
         }
     }
 
+    private static Path mergeSortWord() throws IOException {
+        List<Path> tempSortResultPath = new ArrayList<>(2);
+        tempSortResultPath.add(createTempFile(TEMP_SORTED_WORD_FOLDER));
+        boolean[] usedFirstPath = new boolean[1];
+        usedFirstPath[0] = false;
+
+        TextArray currentText1 = new TextArray(WORD_LENGTH_THRESHOLD);
+        TextArray currentText2 = new TextArray(WORD_LENGTH_THRESHOLD);
+        TextArray previousText = new TextArray(WORD_LENGTH_THRESHOLD);
+
+        Files.walk(Paths.get(TEMP_SORTED_WORD_FOLDER)).filter(Files::isRegularFile).forEach(path -> {
+            try {
+                if (tempSortResultPath.size() < 2) {
+                    tempSortResultPath.add(path);
+                } else {
+                    Path lastResultPath = tempSortResultPath.get(usedFirstPath[0] ? 0 : 1);
+                    Path outputPath = tempSortResultPath.get(usedFirstPath[0] ? 1 : 0);
+                    usedFirstPath[0] = !usedFirstPath[0];
+
+
+                    try (FileWriter outputStream = new FileWriter(outputPath.toFile().getAbsolutePath(), false);
+                         FileReader fileStream1 = new FileReader(path.toFile().getAbsolutePath());
+                         FileReader fileStream2 = new FileReader(lastResultPath.toFile().getAbsolutePath())) {
+
+                        readText(fileStream1, currentText1);
+                        readText(fileStream2, currentText2);
+
+                        while (!currentText1.isEmpty() || !currentText2.isEmpty()) {
+                            if (currentText1.isEmpty()) {
+                                writeText(outputStream, currentText2, previousText);
+                                readText(fileStream2, currentText2);
+                            } else if (currentText2.isEmpty()) {
+                                writeText(outputStream, currentText1, previousText);
+                                readText(fileStream1, currentText1);
+                            } else {
+                                int comp = currentText1.compareTo(currentText2);
+                                if (comp <= 0) {
+                                    writeText(outputStream, currentText1, previousText);
+                                    readText(fileStream1, currentText1);
+                                } else {
+                                    writeText(outputStream, currentText2, previousText);
+                                    readText(fileStream2, currentText2);
+                                }
+                            }
+
+                        }
+                    }
+                }
+
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        return tempSortResultPath.get(usedFirstPath[0] ? 0 : 1);
+    }
+
+    private static void readText(FileReader inputStream, TextArray textArray) throws IOException {
+        textArray.reset();
+
+        int count = 0;
+
+        int i;
+        String s;
+        while ((i = inputStream.read()) != -1) {
+            s = Character.toString((char) i);
+
+            if (isBlank(s)) {
+                return;
+            } else {
+                textArray.set(count, i);
+                count++;
+            }
+        }
+    }
+
+    private static void writeText(FileWriter outputStream, TextArray textArray, TextArray pTextArray) throws IOException {
+        if (pTextArray.compareTo(textArray) != 0) {
+            textArray.write(outputStream);
+            pTextArray.clone(textArray);
+        }
+    }
 
 
     private static void createTempFolder(String folderName) throws IOException {
