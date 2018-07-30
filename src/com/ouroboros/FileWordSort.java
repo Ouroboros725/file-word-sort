@@ -23,7 +23,8 @@ import static java.lang.Character.toChars;
  * <br>
  * Algorithm:<br>
  *     In general, break the file to small files and sort the words in the small files.
- *     Then merge-sort the words from the small files.<br>
+ *     Then merge-sort the words from the small files.
+ *     The sorting uses the unicode values of the characters in order of their appearance in the words. <br>
  *      1. Analyze the input file. Read the file character by character. Identify the words in the files.<br>
  *          a) For the words, the length of which are greater than <code>WORD_LENGTH_THRESHOLD</code>,
  *              save them character by character directly to separate files. One word takes one file.<br>
